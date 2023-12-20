@@ -1,0 +1,65 @@
+version: "3"
+services:
+  postgresql-master:
+    image: bitnami/postgresql
+    restart: always
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgresql_master_data:/bitnami/postgresql
+    environment:
+      - POSTGRESQL_PGAUDIT_LOG=READ,WRITE
+      - POSTGRESQL_LOG_HOSTNAME=true
+      - POSTGRESQL_REPLICATION_MODE=master
+      - POSTGRESQL_REPLICATION_USER=repl_user
+      - POSTGRESQL_REPLICATION_PASSWORD=repl_user
+      - POSTGRESQL_USERNAME=postgres
+      - POSTGRESQL_PASSWORD=postgres
+      - POSTGRESQL_DATABASE=development_database
+      - ALLOW_EMPTY_PASSWORD=yes
+
+  postgresql-slave:
+    image: bitnami/postgresql
+    restart: always
+    ports:
+      - '5432'
+    depends_on:
+      - postgresql-master
+    environment:
+      - POSTGRESQL_PASSWORD=postgres
+      - POSTGRESQL_MASTER_HOST=postgresql-master
+      - POSTGRESQL_PGAUDIT_LOG=READ
+      - POSTGRESQL_LOG_HOSTNAME=true
+      - POSTGRESQL_REPLICATION_MODE=slave
+      - POSTGRESQL_REPLICATION_USER=repl_user
+      - POSTGRESQL_REPLICATION_PASSWORD=repl_user
+      - POSTGRESQL_MASTER_PORT_NUMBER=5432
+      - ALLOW_EMPTY_PASSWORD=yes
+
+  run_ddl_script:
+    image: postgres:latest
+    volumes:
+      - ./bash_scripts/execute_ddl.sh:/execute_ddl.sh
+      - ./sql/ddl_init.sql:/ddl_init.sql
+      - ./sql/mock_data.sql:/mock_data.sql
+      - ./sql/gmv_view.sql:/gmv_view.sql
+    environment:
+      PRIMARY_DB_HOST: postgresql-master
+      PRIMARY_DB_PORT: 5432
+      PRIMARY_DB_USER: postgres
+      PRIMARY_DB_PASSWORD: postgres
+      PRIMARY_DB_NAME: development_database
+
+      REPLICA_DB_HOST: postgresql-slave
+
+      DDL_SCRIPT_PATH: "./ddl_init.sql"
+      MOCK_DATA_PATH: "./mock_data.sql"
+      GMV_VIEW_PATH: "./gmv_view.sql"
+    depends_on:
+      - postgresql-master
+      - postgresql-slave
+    entrypoint: ["/bin/bash", "/execute_ddl.sh"]
+
+volumes:
+  postgresql_master_data:
+    driver: local
